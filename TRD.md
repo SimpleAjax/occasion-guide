@@ -1,220 +1,98 @@
 # Technical Requirements Document: Occasion Guide
 
-**Status:** Draft 1.0  
-**Companion:** [PRD](PRD.md)  
-**Implementation posture:** build a fast public reading experience first; add authenticated, pre-moderated contribution second.
+**Status:** MVP direction 1.0
+**Companion:** [PRD](PRD.md)
+**Implementation posture:** static HTML/CSS with minimal JavaScript; no backend in the first release.
 
-## 1. Architecture summary
+## 1. Technical approach
 
-Use a content-first web architecture with a small, auditable contribution system.
+Build a small, deploy-anywhere static site. The first version should be understandable and editable by a person who can open an HTML file. Keep content close to the markup until the editorial template has been tested in practice.
 
 ```text
-Public reader
-  -> Next.js site on Vercel
-  -> published guide content and search index
-
-Signed-in contributor
-  -> authenticated contribution form
-  -> API validation and rate limit
-  -> moderation queue
-  -> approved public community note
-
-Editor / moderator
-  -> protected editorial console
-  -> review, approve, reject, redact, or publish correction
+Reader
+  -> occasion-guide/index.html
+  -> embedded guide catalogue and lightweight browser filtering
 ```
 
-## 2. Recommended stack
+No framework, build pipeline, database, authentication, API, CMS, or runtime service is required for the MVP.
 
-| Area | Choice | Reason |
-| --- | --- | --- |
-| Application | Next.js, TypeScript, App Router | Static-first pages, strong SEO, server rendering, and Vercel deployment. |
-| Hosting | Vercel | Preview deployments, image optimisation, edge caching, and simple custom-domain setup. |
-| Guide content at launch | MDX in Git | Reviewable editorial changes, pull-request history, and no CMS dependency before the content model stabilises. |
-| Content after editorial scale | Headless CMS or database-backed editor | Add only when non-technical editors need a publishing workflow. |
-| Authentication | Supabase Auth or equivalent managed OIDC provider | Email/social sign-in, session management, and account controls without building auth from scratch. |
-| Data | PostgreSQL via Supabase or managed Postgres | Relational moderation, source, tag, and contribution data. |
-| File storage | Private object storage with signed upload URLs | Optional contribution attachments; do not expose raw uploads by default. |
-| Abuse controls | CAPTCHA alternative / bot defence, rate limiting, moderation queue | Public comments need protection from spam and harmful content. |
-| Observability | Vercel Analytics plus error monitoring | Track reading flow and failures without collecting unnecessary sensitive data. |
-
-## 3. Repository layout
+## 2. Repository layout
 
 ```text
 occasion-guide/
-  app/
-    (public)/
-      page.tsx
-      occasions/[slug]/page.tsx
-      search/page.tsx
-    api/
-      contributions/route.ts
-      reports/route.ts
-    admin/
-      moderation/page.tsx
-  content/
-    occasions/
-      bach-baras.mdx
-      ganesh-chaturthi.mdx
-  components/
-    preparation-path.tsx
-    source-list.tsx
-    community-notes.tsx
-  lib/
-    auth.ts
-    content.ts
-    moderation.ts
-    validation.ts
-  db/
-    migrations/
-    schema.sql
-  docs/
-    editorial-style-guide.md
-  PRD.md
-  TRD.md
+  index.html       # public prototype and guide catalogue
+  PRD.md           # product scope and editorial direction
+  TRD.md           # implementation and acceptance requirements
+  README.md        # run and extend instructions
 ```
 
-## 4. Content model
+If the page later needs a larger catalogue, split content into static HTML pages or JSON generated during a build. Do not introduce a framework until the content volume or publishing workflow proves that it is necessary.
 
-### Occasion front matter
+## 3. Page requirements
 
-```yaml
-title: Bach Baras
-slug: bach-baras
-alternate_names: [Bachh Baras, Govatsa Dwadashi]
-occasion_type: festival
-traditions: [Hindu]
-regions: [Rajasthan]
-summary: A regional guide to preparation and common variations.
-reviewed_at: 2026-09-14
-review_status: reviewed
-sources:
-  - label: Government of India Utsav
-    url: https://utsav.gov.in/view-event/bach-baras-1
+- Use semantic HTML landmarks: `header`, `nav`, `main`, `section`, `article`, and `footer`.
+- Provide one clear `h1`; sections use a logical heading hierarchy.
+- Include a skip link, visible focus states, keyboard-operable controls, and labelled search/filter controls.
+- Use explicit links with `index.html` or `.html` paths so local file previews do not depend on directory-index behaviour.
+- Keep the main reading column comfortable for long-form text and avoid dense walls of copy.
+- Use the Cimulink VSL visual baseline: Manrope body text, Roboto Slab display text, DM Mono utility labels, and the established pine/paper/moss/sand/clay palette.
+- Use CSS custom properties, grid/flex layout, and a mobile breakpoint. Avoid external JavaScript dependencies.
+- Use progressive enhancement: without JavaScript, all guide cards and sections remain readable; with JavaScript, search and filters refine the visible cards.
+- Use `aria-live` for the filtered-result count and do not hide content solely through inaccessible visual tricks.
+
+## 4. Guide data contract
+
+Each guide card/section must provide:
+
+```text
+title
+alternate names (optional)
+guide type
+region/tradition (when relevant)
+summary
+why people observe it
+before checklist
+on-the-day checklist
+after checklist
+variation note
+questions to confirm locally
+safety/accessibility note
+sources
+review date
 ```
 
-### Required guide sections
+The HTML `data-search`, `data-type`, and `data-region` attributes are the MVP search index. Keep them aligned with the visible content.
 
-The build must reject a guide missing any of: summary, common preparations, variation note, local-confirmation questions, sources, review date, or safety/accessibility note.
+## 5. Minimal interaction contract
 
-## 5. Database model
+- Search matches title, alternate names, summary, region, and visible keywords.
+- Type filters are additive with search and include an “All guides” state.
+- Empty results show a helpful message and a way to clear the filter.
+- Navigation anchors move to the relevant section and remain usable without JavaScript.
+- The correction link uses a placeholder email address until the product owner supplies the final editorial contact.
 
-| Table | Key fields | Notes |
-| --- | --- | --- |
-| `profiles` | `id`, `display_name`, `role`, `created_at`, `status` | Linked to auth identity; do not expose email publicly. |
-| `occasions` | `id`, `slug`, `title`, `status`, `reviewed_at` | Mirrors published content and supports related data. |
-| `occasion_sources` | `occasion_id`, `label`, `url`, `source_type`, `checked_at` | Source attribution and review. |
-| `contributions` | `id`, `occasion_id`, `author_id`, `kind`, `body`, `region`, `language`, `status`, `created_at` | Status: pending, approved, rejected, redacted. |
-| `moderation_actions` | `id`, `contribution_id`, `moderator_id`, `action`, `reason`, `created_at` | Immutable moderation audit trail. |
-| `reports` | `id`, `contribution_id`, `reporter_id`, `reason`, `status` | Any approved item can be reported. |
-| `saved_occasions` | `profile_id`, `occasion_id`, `created_at` | Phase 2 only. |
+## 6. Security and privacy
 
-Use UUID primary keys, UTC timestamps, and foreign keys. Enable row-level security for every public-facing table.
+- No user data is collected by the MVP.
+- No comments, uploads, sign-in, tracking, or third-party analytics are included.
+- External source links use normal HTTPS links and open in a new tab with `rel="noreferrer"`.
+- Do not embed third-party widgets or user-generated HTML.
 
-## 6. Roles and permissions
+## 7. Acceptance checks
 
-| Role | Can read | Can submit | Can publish | Can moderate |
-| --- | --- | --- | --- | --- |
-| Visitor | Published content and approved notes | No | No | No |
-| Member | Published content and own submissions | Yes | No | No |
-| Editor | All public content and assigned drafts | Yes | Guide drafts | No, unless also moderator |
-| Moderator | Published and queued contributions | No | No | Contributions only |
-| Admin | All | Yes | Yes | Yes |
+- Open `index.html` directly and verify that the full catalogue is readable.
+- Serve the folder over a simple local HTTP server and verify the page returns 200.
+- Search and type filters update the visible result count and work with keyboard input.
+- Verify layout at desktop and 320 px mobile width.
+- Verify focus visibility, heading order, link purpose, colour contrast, and reduced-motion behaviour.
+- Run an HTML validator if available; report visual/browser checks separately from source checks.
 
-No client request may grant a role. Role checks occur server-side and are enforced by database policies.
+## 8. Upgrade path after validation
 
-## 7. Contribution and moderation workflow
+Only after readers validate the template:
 
-1. Client fetches a CSRF-safe authenticated session.
-2. The submission API validates the body, contribution type, region/language fields, and rate limit.
-3. The server stores the contribution as `pending`; it is never visible in the public query.
-4. A moderator sees context: occasion, contribution type, optional regional tag, author history, and report history.
-5. Moderator approves, rejects with a private reason, or redacts unsafe personal data.
-6. Only `approved` items are returned by public APIs.
-7. A report can temporarily hide an approved item from public reads until a moderator reviews it.
-
-### Moderation rules
-
-Reject or redact content containing harassment, hate, caste or religious superiority claims, coercive instructions, medical claims, doxxing, spam, vendor solicitation, copied copyrighted text, or private information about a child/family.
-
-## 8. API contract
-
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/occasions?query=&region=&type=` | Search/filter published occasion metadata. |
-| `GET` | `/api/occasions/:slug/contributions` | Return approved community notes only. |
-| `POST` | `/api/contributions` | Authenticated, rate-limited pending submission. |
-| `POST` | `/api/reports` | Authenticated report of an approved note. |
-| `GET` | `/api/admin/contributions?status=pending` | Moderator queue; protected. |
-| `PATCH` | `/api/admin/contributions/:id` | Approve/reject/redact; protected and audited. |
-
-All mutations use schema validation, structured error responses, request IDs, and server-side authorisation.
-
-## 9. Security and privacy requirements
-
-- Require authentication for any contribution or report.
-- Store email only in the auth provider; show display name or initials only.
-- Pre-moderate every public contribution in v1.
-- Rate-limit sign-in-linked submissions, reports, and search endpoints.
-- Escape or sanitise all user-generated text; render Markdown only through an allowlist.
-- Do not allow HTML, script, embedded links with previews, or public file uploads in v1.
-- Use secure cookies, HTTPS, CSP, CSRF protection for mutations, and environment-secret rotation.
-- Record moderation actions but avoid logging full private content in analytics.
-- Provide deletion/export requests and a retention policy before collecting saved occasions or notification preferences.
-
-## 10. Search, SEO, and performance
-
-- Generate static occasion pages at build time with revalidation for editorial updates.
-- Create metadata, canonical URLs, Open Graph images, and structured data for each public guide.
-- Index title, alternate names, plain-language summary, region, tradition, occasion type, and month/season.
-- Use local search for the seed catalogue; introduce hosted search only when content size requires it.
-- Serve responsive, compressed images; target Core Web Vitals green on common mobile networks.
-- Never index pending contributions or moderator routes.
-
-## 11. Accessibility and localisation
-
-- WCAG 2.2 AA baseline: keyboard navigation, visible focus, colour contrast, semantic headings, and screen-reader labels.
-- Dates must show calendar context carefully; no date is considered authoritative without an editorial source and declared regional/calendar basis.
-- Keep all ritual terms in their original form alongside a plain-language explanation.
-- Store language, script, and translation-review metadata separately from the guide body.
-- Do not machine-translate ritual instructions directly into publication; require human review.
-
-## 12. Delivery plan
-
-### Milestone A - Readable pilot
-
-- Next.js shell and design tokens.
-- 8-12 MDX guides, source cards, preparation path, and search.
-- No accounts, comments, or database required.
-
-### Milestone B - Safe contribution
-
-- Authentication, Postgres schema, row-level security, contribution form, moderation queue, reports, and audit trail.
-- Security review before public launch.
-
-### Milestone C - Personal planning
-
-- Saved guides, optional reminders, translation workflow, and editorial dashboard.
-
-## 13. Test strategy and acceptance criteria
-
-| Area | Acceptance criterion |
-| --- | --- |
-| Public guide | A guide loads without authentication, has sources/review date, and passes keyboard navigation. |
-| Submission | An authenticated member can create a valid pending note; visitor cannot. |
-| Moderation | Pending/rejected/redacted contributions never appear in the public API or page HTML. |
-| Reporting | A report hides the relevant item until review and creates an audit event. |
-| Authorisation | A member cannot read or alter another member's private moderation outcome. |
-| Content safety | Dangerous HTML and disallowed links render as plain text or are rejected. |
-| Search | Search returns only published occasions and respects filters. |
-| Mobile | Preparation Path, checklist, and comments remain usable at 320 px viewport width. |
-
-## 14. Operational runbook
-
-- Review moderation queue daily during the first three seasonal launches.
-- Review source links and dates before every festival season.
-- Keep a public correction policy and an internal incident log.
-- Back up database daily once contribution data exists.
-- Use preview deployments for editorial and application changes.
-- Do not deploy a guide with unresolved high-severity correction requests.
-
+1. Move guides into Markdown/MDX or a small content collection.
+2. Add generated individual guide URLs and local search indexing.
+3. Add a CMS only when non-technical editorial publishing is a real bottleneck.
+4. Add authentication and pre-moderated contributions as a separate security-reviewed milestone.
+5. Add paid planning or partner features only with explicit editorial/commercial separation.

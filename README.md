@@ -1,7 +1,17 @@
 # Occasion Guide
 
-Planning repository for a respectful, practical guide to festivals, family milestones, and celebrations. The product is designed to help people understand an occasion, prepare with confidence, and share region- or family-specific context without claiming one universal way to celebrate.
+An HTML-first, reader-friendly guide to festivals, family milestones, birthdays, and celebrations. The MVP is intentionally small: useful information, a clear preparation path, and no accounts or backend.
 
-- [Product requirements](PRD.md)
-- [Technical requirements](TRD.md)
+## Open locally
 
+Open [index.html](index.html) in a browser. For route-like testing, serve this folder with any static HTTP server.
+
+## Extend the catalogue
+
+Add another `.guide-card` in `index.html`, following the content contract in [TRD.md](TRD.md). Keep the language respectful of regional and family variation, and include sources plus a review date before treating a guide as publishable.
+
+## Product and technical direction
+
+- [PRD](PRD.md)
+- [TRD](TRD.md)
+- [Competitor notes](COMPETITORS.md)
